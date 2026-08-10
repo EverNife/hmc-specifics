@@ -30,9 +30,23 @@ public abstract class MixinGuiScreen implements GuiScreen {
     @Shadow
     protected List<net.minecraft.client.gui.GuiButton> buttonList;
 
-    @Override
     @Invoker("mouseClicked")
-    public abstract void click(int x, int y, int button);
+    public abstract void hmc$mouseClicked(int x, int y, int button);
+
+    @Invoker("mouseReleased")
+    public abstract void hmc$mouseReleased(int x, int y, int button);
+
+    /**
+     * A real click is a press AND a release, and on a container the two do different work: the
+     * press takes a stack onto the cursor, but putting one down is finalized by the release,
+     * because this version routes it through the drag-split state machine. Pressing alone can
+     * therefore pick items up and never put them back.
+     */
+    @Override
+    public void click(int x, int y, int button) {
+        hmc$mouseClicked(x, y, button);
+        hmc$mouseReleased(x, y, button);
+    }
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void initHook(CallbackInfo ci) {
@@ -72,18 +86,22 @@ public abstract class MixinGuiScreen implements GuiScreen {
                 }
 
                 Slot slot = (Slot) slotObj;
+                // An empty slot holds null here, not an empty stack - ItemStack.EMPTY only exists
+                // from 1.11 on. Any container has empty slots, so an unguarded read throws before
+                // a single element is collected, taking the whole screen dump down with it.
                 ItemStack stack = slot.getStack();
                 String text = "";
-                if (stack.getItem() != null) {
+                List<String> tooltip = Collections.emptyList();
+                if (stack != null && stack.getItem() != null) {
                     IChatComponent comp = (new ChatComponentText("[")).appendText(stack.getDisplayName()).appendText("]");
                     text = ComponentHelper.toAnsiString(comp);
+                    tooltip = hmc$getItemToolTip(stack);
                 }
 
                 int[] xyOffset = GuiScreenMixinWorkaround.getXYOffset(guiContainer);
                 int xOffset = xyOffset[0];
                 int yOffset = xyOffset[1];
 
-                List<String> tooltip = hmc$getItemToolTip(stack);
                 result.add(new me.earth.headlessmc.mc.gui.Slot(
                         text,
                         slot.xDisplayPosition + xOffset,
@@ -98,13 +116,11 @@ public abstract class MixinGuiScreen implements GuiScreen {
             EntityPlayerSP player = Minecraft.getMinecraft().thePlayer;
             if (player != null) {
                 // AbstractContainerScreen draggingItem is not accessible :(
+                // Carrying nothing is null on this version, same as an empty slot.
                 ItemStack carried = player.inventory.getItemStack();
-                if (carried.getItem() != null) {
-                    String text = "";
-                    if (carried.getItem() != null) {
-                        IChatComponent comp = (new ChatComponentText("[")).appendText(carried.getDisplayName()).appendText("]");
-                        text = ComponentHelper.toAnsiString(comp);
-                    }
+                if (carried != null && carried.getItem() != null) {
+                    IChatComponent comp = (new ChatComponentText("[")).appendText(carried.getDisplayName()).appendText("]");
+                    String text = ComponentHelper.toAnsiString(comp);
 
                     List<String> tooltip = hmc$getItemToolTip(carried);
                     result.add(new me.earth.headlessmc.mc.gui.Carried(
