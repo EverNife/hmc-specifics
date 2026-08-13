@@ -1,5 +1,6 @@
 package me.earth.headlessmc.mc.mixins;
 
+import me.earth.headlessmc.mc.player.ClientChatHooks;
 import me.earth.headlessmc.mc.player.Player;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -15,7 +16,18 @@ public abstract class MixinEntityPlayerSP implements Player {
 
     @Override
     public void sendMessage(String message) {
-        this.sendChatMessage(message);
+        // The same two hooks the chat GUI runs, in the same order, since this path never opens it:
+        // without them a client-side command typed on the console reaches the server instead.
+        String line = ClientChatHooks.onSend(message);
+        if (line == null) {
+            return;
+        }
+
+        if (ClientChatHooks.consumedAsCommand(this, line)) {
+            return;
+        }
+
+        this.sendChatMessage(line);
     }
 
     @Override

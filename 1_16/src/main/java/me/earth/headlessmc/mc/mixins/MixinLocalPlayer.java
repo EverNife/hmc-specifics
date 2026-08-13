@@ -1,5 +1,6 @@
 package me.earth.headlessmc.mc.mixins;
 
+import me.earth.headlessmc.mc.player.ClientChatHooks;
 import me.earth.headlessmc.mc.player.Player;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -14,7 +15,15 @@ public abstract class MixinLocalPlayer implements Player {
 
     @Override
     public void sendMessage(String message) {
-        this.chat(message);
+        // What the chat screen does before sending, and the only place this path runs it: this era
+        // has no client command API, so a mod intercepting the chat event is how a client-side
+        // command is claimed before it reaches the server.
+        String line = ClientChatHooks.onSend(message);
+        if (line == null) {
+            return;
+        }
+
+        this.chat(line);
     }
 
     @Override
