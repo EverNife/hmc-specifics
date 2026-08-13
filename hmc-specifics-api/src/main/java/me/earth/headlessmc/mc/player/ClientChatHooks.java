@@ -88,11 +88,13 @@ public final class ClientChatHooks {
             try {
                 Class<?> type = Class.forName("net.minecraftforge.client.ClientCommandHandler");
                 found = type.getField("instance").get(null);
-                // Matched by name and arity: the parameter is a Minecraft type, whose name does not
-                // survive remapping the way the loader's own names do.
+                // Matched by SHAPE, never by name: this method implements a Minecraft interface,
+                // so remapping renames it while the class around it keeps its own name. Taking
+                // (something, String) -> int is unique on this type in every era that has it.
                 for (Method method : type.getMethods()) {
-                    if ("executeCommand".equals(method.getName())
-                            && method.getParameterTypes().length == 2) {
+                    Class<?>[] parameters = method.getParameterTypes();
+                    if (parameters.length == 2 && parameters[1] == String.class
+                            && method.getReturnType() == int.class) {
                         executeCommand = method;
                         break;
                     }
